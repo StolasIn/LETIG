@@ -1,11 +1,10 @@
-import torch
 import clip
 
-from FeatureExtractor.Base.Extractor import Extractor
+from FeatureExtractors.Base.base_extractor import BaseExtractor
 
-class CLIP(Extractor):
+class ClipExtractor(BaseExtractor):
     def __init__(self):
-        pass
+        self.extractor_flag = "multimodel"
     
     def available_models(self):
         models = [

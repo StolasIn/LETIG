@@ -31,6 +31,9 @@ class Generator:
         self.num_ws = self.synthesis.num_ws
         self.z_dim = self.mapping.z_dim
         self.w_avg, self.w_std = self.get_statistic()
+
+    def get_variable_length(self):
+        return self.z_dim
     
     def load_model(self, path):
         with dnnlib.util.open_url(path) as f:

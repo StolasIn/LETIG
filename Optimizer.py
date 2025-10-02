@@ -1,244 +1,163 @@
 from pymoo.optimize import minimize
 from pymoo.algorithms.soo.nonconvex.cmaes import CMAES
+from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.algorithms.soo.nonconvex.g3pcx import G3PCX
+from pymoo.algorithms.moo.age2 import AGEMOEA2
+from pymoo.algorithms.moo.sms import SMSEMOA
 
 from pymoo.core.result import Result
 from pymoo.core.problem import Problem
 import torch
 import numpy as np
 
+from EvaluationModel import EvaluationModel
+from Generator import Generator
+from PIL import Image
 
-class CMAES_MultiTask(CMAES):
-    
-    """
-        run one step of optimization, rather than whole process
-        override CMAES class function
-    """
-    
-    def run(self):
-        res = Result()
-        self.iterator = self._run(self.problem)
-        next(self.iterator)
-        res = self.result()
-        return res
-    
-    def _run(self, problem):
-        if self.termination is None:
-            raise Exception("No termination criterion defined and algorithm has no default termination implemented!")
-        
-        while self.has_next():
-            self.next()
-            yield
-        yield True
-
-class Tasks:
-    
-    """
-        handle problems and algorithms for tasks
-        
-        paramters
-        =========
-        
-        problems : a batch of Problems class (Problems, [n])
-        algorithms : a batch of CMAES_MultiTask class (CMAES_MultiTask, [n])
-        iterators : a batch of iterators from prepare_iterators (algorithms iterator, [n])
-    """
-    
-    def __init__(
-        self,
-        problems,
-        algorithms,
-        iterators
-    ):
-        self.Problems = problems
-        self.Algorithms = algorithms
-        self.Iterators = iterators
-
-        self.task_len = len(problems)
-        self.offspring_size = len(self.Algorithms[0].ask())
-        self.terminals = np.zeros(self.task_len, dtype = bool)
-        
-    # move one step of optimization process
-    def move(self):
-        for i in range(self.task_len):
-            if self.terminals[i] == True:
-                continue
-            
-            iterator = self.Iterators[i]
-            terminal = next(iterator)
-            if terminal == True:
-                self.terminals[i] = True
-        
-        return all(self.terminals) # if all tasks is complete
-        
-    def get_offspring(self):
-        offspring_list = []
-        for i in range(self.task_len):
-            offspring = self.get_offspring_of_task(i)
-            offspring_list.append(offspring)
-            
-        return offspring_list
-
-    def get_offspring_of_task(self, task_index):
-        offspring = self.Algorithms[task_index].ask()
-        return offspring
-    
-    # evaluate new offspring
-    def evaluation(self, offspring):
-        for i in range(self.task_len):
-            self.Algorithms[i].evaluator.eval(self.Problems[i], offspring[i])
-    
-    def set_offspring(self, offspring):
-        for i in range(self.task_len):
-            self.Algorithms[i].tell(infills = offspring[i])
-
-    def final_result(self):
-        results_x = []
-        results_f = []
-        for algorithm in self.Algorithms:
-            res = algorithm.result()
-            results_x.append(res.X)
-            results_f.append(res.f)
-        
-        return results_x, results_f
-
-    def get_runs(self):
-        xs = []
-        fs = []
-        for problem in self.Problems:
-            x, f = problem.get()
-            xs.append(x)
-            fs.append(f)
-        return xs, fs
-        
-class Fitness:
-    def __init__(
-        self,
-        config
-    ):
-        self.config = config
-        self.semantic = config['OPTIM'].getfloat('semantic_ratio')
-        self.realistic = config['OPTIM'].getfloat('realistic_ratio')
-
-    def fitness(self, scores):
-        f = [self.semantic * scores[0][i] + self.realistic * scores[1][i] for i in range(len(scores[0]))]
-        f = np.column_stack([f])
-        return f
-
-class Record:
-    def __init__(
-        self,
-        config
-    ):
-        self.config = config
-        self.semantic = config['OPTIM'].getfloat('semantic_ratio')
-        self.realistic = config['OPTIM'].getfloat('realistic_ratio')
-        self.best_x = None
-        self.best_f = 0
-    
-    def record(self, population, scores):
-        if len(scores[0]) == 1:
-            return
-        
-        
-        scores = [[scores[0][i], scores[1][i]] for i in range(len(scores[0]))]
-        self.best_so_far(population, scores)
-    
-    def get(self):
-        return self.best_x, self.best_f*(-1)
-    
-    def best_so_far(self, population, scores):
-        scores = [score[0] + score[1] for score in scores]
-        min_index = np.argmin(scores)
-        if scores[min_index] < self.best_f:
-            self.best_f = scores[min_index]
-            self.best_x = population[min_index]
-        
 
 class Problems(Problem):
-    def __init__(self, util, txt, config):
+    def __init__(
+        self, 
+        evaluation_function, 
+        variable_size,
+        n_objectives,
+        lower_bound = -2,
+        upper_bound = 2,
+        device = 'cpu'
+    ):
         super().__init__(
-            n_var = config['OPTIM'].getint('n_variables'),
-            n_obj = config['OPTIM'].getint('n_objectives'),
-            xl = config['OPTIM'].getint('lower_bound'),
-            xu = config['OPTIM'].getint('upper_bound')
+            n_var = variable_size,
+            n_obj = n_objectives,
+            xl = lower_bound,
+            xu = upper_bound
         )
 
-        self.device = config['BASE']['device']
-        self.util = util
-        self.txt = txt
-        self.F = Fitness(config)
-        self.R = Record(config)
+        self.device = device
+        self.evaluation_function = evaluation_function
+
+    def fitness(self, scores):
+        if self.n_obj == 1:
+            return [sum(scores[i]) for i in range(len(scores))]
+        else:
+            return np.array(scores)
 
     def _evaluate(self, x, out, *args, **kwargs):
-        scores = self.util.get_scores(txt = self.txt, ws = torch.from_numpy(x).to(self.device))
-        self.R.record(x, scores)
-        out['F'] = self.F.fitness(scores)
+        scores = self.evaluation_function(ws = torch.from_numpy(x).to(self.device))
+        out['F'] = self.fitness(scores)
+
+class Optimizer:
+    def __init__(
+        self,
+        generator_name,
+        use_txt_feature = False,
+        device = 'cpu'
+    ):
+        torch.autograd.set_grad_enabled(False)
+        self.device = device
         
-    def get(self):
-        return self.R.get()
-
-def prepare_problems(util, txts, config):
-    problems = []
-    for i in range(len(txts)):
-        p = Problems(util, txts[i], config)
-        problems.append(p)
-    return problems
-
-def prepare_algorithms(problems, config):
-    xl = config['OPTIM'].getint('lower_bound')
-    xu = config['OPTIM'].getint('upper_bound')
-    n_variables = config['OPTIM'].getint('n_variables')
- 
-    algorithms = []
-    for i in range(len(problems)):
-        algorithm = CMAES_MultiTask(x0=np.random.uniform(xl, xu, size=(n_variables)))
-        algorithms.append(algorithm)
-    return algorithms
-
-def prepare_iterators(problems, algorithms, config):
-    if config['BASE'].getint('seed') == -1:
-        seed = None
-    else:
-        seed = config['BASE'].getint('seed')
-  
-    iterators = []
-    for problem, algorithm in zip(problems, algorithms):
+        # Generator
+        self.generator_path = f'checkpoints/{generator_name}'
+        self.use_fts = use_txt_feature
         
-        minimize(
-            problem, 
-            algorithm, 
-            termination = ('n_evals', config['OPTIM'].getint('evaluation')), 
-            copy_algorithm = False,
-            seed = seed,
-            verbose=config['BASE'].getboolean('verbose')
+        # classes
+        self.generator = Generator(self.generator_path, self.use_fts, self.device)
+        self.evaluator = EvaluationModel()
+
+    def setup_evaluator(
+        self, 
+        evaluator_info,
+        prompt_text: str = None,
+        prompt_image: Image.Image = None
+    ):
+        if prompt_text is None and prompt_image is None:
+            raise ValueError("Either prompt_text or prompt_image must be provided.")
+        
+        self.evaluator.setup(prompt_text, prompt_image, evaluator_info, self.device)
+    
+    def setup_optimizer(
+        self, 
+        algorithm_name,
+        lower_bound,
+        upper_bound,
+        population_size,
+        n_objectives,
+        n_evaluations
+    ):
+        self.algorithm = self.create_algorithm(
+            algorithm_name = algorithm_name,
+            lower_bound = lower_bound,
+            upper_bound = upper_bound,
+            population_size = population_size
         )
-        
-        iterator = algorithm.iterator
-        iterators.append(iterator)
-    return iterators
 
-def solve_multitask(util, txts, config):
+        self.problem = Problems(
+            self.get_scores, 
+            variable_size = self.generator.get_variable_length(),
+            n_objectives = n_objectives,
+            lower_bound = lower_bound,
+            upper_bound = upper_bound,
+            device = self.device
+        )
+
+        self.n_evaluations = n_evaluations
+
+    def get_scores(self, ws):
+        images = [self.generator.get_img_from_w(w = w) for w in ws]
+        scores = self.evaluator.calculate_similaritys(images, batch_size = len(images))
+
+        return scores
     
-    # build tasks
-    problems = prepare_problems(util, txts, config)
-    algorithms = prepare_algorithms(problems, config)
-    iterators = prepare_iterators(problems, algorithms, config)
-    tasks = Tasks(problems, algorithms, iterators)
+    def create_algorithm(
+        self, 
+        algorithm_name,
+        lower_bound,
+        upper_bound,
+        population_size
+    ):
     
-    """
-        1. get offspring
-        2. evaluaition
-        3. set new population
-    """
-    
-    generation = 0
-    while len(iterators) > 0:
-        terminal = tasks.move()
-        if terminal == True:
-            break
-        
-        offspring = tasks.get_offspring()
-        tasks.evaluation(offspring)
-        tasks.set_offspring(offspring)
-        generation+=1
-    return tasks.get_runs()
+        algorithm = None
+
+        if algorithm_name == 'CMAES':
+            algorithm = CMAES(
+                x0 = np.random.uniform(lower_bound, upper_bound, size=(self.generator.get_variable_length())),
+                sigma = 0.5,
+                pop_size = population_size
+            )
+        elif algorithm_name == "G3PCX":
+            algorithm = G3PCX(
+                pop_size = population_size
+            )
+        elif algorithm_name == 'NSGA2':
+            algorithm = NSGA2(
+                pop_size = population_size
+            )
+        elif algorithm_name == "AGEMOEA2":
+            algorithm = AGEMOEA2(
+                pop_size = population_size
+            )
+        elif algorithm_name == "SMSEMOA":
+            algorithm = SMSEMOA(
+                pop_size = population_size
+            )
+        else:
+            raise NotImplementedError(f"Algorithm {algorithm_name} not implemented.")
+        return algorithm
+
+    def solve(self, verbose = False, seed = -1):
+        res = minimize(
+            self.problem, 
+            self.algorithm, 
+            termination = ('n_evals', self.n_evaluations), 
+            copy_algorithm = False,
+            seed = seed if seed != -1 else None,
+            verbose = verbose
+        )
+
+        print(f"Best solution found: \nX = {res.X}\nF = {res.F}\nCV= {res.CV}")
+        return res.X, res.F
+
+    def get_fes(self, verbose = False, seed = -1):
+        x, f = self.solve(verbose, seed)
+        w = torch.from_numpy(x).to(self.device)
+        image = self.generator.get_img_from_w(w = w)
+        return image, x, f

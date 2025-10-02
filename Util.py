@@ -1,63 +1,59 @@
+from PIL import Image
 import torch
 from Generator import Generator
-from Distance import Distance
+from EvaluationModel import EvaluationModel
 import Optimizer
 
 class Util:
-    def __init__(self, generator_name, dataset_name, config):
+    def __init__(
+        self,
+        generator_name,
+        use_txt_feature = False,
+        device = 'cpu'
+    ):
         torch.autograd.set_grad_enabled(False)
-        self.config = config
-        self.device = config['BASE']['device']
-        self.txts = None
+        self.device = device
         
         # Generator
         self.generator_path = f'checkpoints/{generator_name}'
-        self.use_fts = config['BASE'].getboolean('use_txt_feature')
-        
-        # Distance
-        self.dataset_path = f'datasets/{dataset_name}-image_features.json'
-        self.clip_score_threshold = config['DISTANCE'].getfloat('preprocess_threshold')
-        self.default_batch_size = config['DISTANCE'].getint('batch_size')
-        self.mode = config['DISTANCE']['mode']
-        self.score_type = config['DISTANCE']['score_type']
-        self.dataset_k = config['DISTANCE'].getint('k')
+        self.use_fts = use_txt_feature
         
         # classes
         self.generator = Generator(self.generator_path, self.use_fts, self.device)
-        self.distance = Distance(self.dataset_path, self.clip_score_threshold, self.dataset_k, self.default_batch_size, self.mode, self.score_type, self.device)
-    
-    def setup(self, txts):
-        self.distance.setup(txts)
-        self.txts = txts
-    
-    def get_dataset_len(self):
-        return self.distance.get_dataset_len()
+        self.evaluator = EvaluationModel()
 
-    def get_score(self, txt, img):
-        semantic_score, realistic_score = self.distance.distance_metric(txt, img)
-        semantic_score *= 100
-        realistic_score *= 100
+    def setup(
+        self, 
+        evaluator_info,
+        prompt_text: str = None,
+        prompt_image: Image.Image = None
+    ):
+        if prompt_text is None and prompt_image is None:
+            raise ValueError("Either prompt_text or prompt_image must be provided.")
+        
+        self.evaluator.setup(prompt_text, prompt_image, evaluator_info, self.device)
 
-        return [semantic_score, realistic_score]
-
-    def get_scores(self, txt, ws):
-        semantic_scores = []
-        realistic_scores = []
+    def get_scores(self, ws):
+        text_semantic_scores = []
+        image_semantic_scores = []
+        text_realistic_scores = []
+        image_realistic_scores = []
+        scores = []
         for w in ws:
             img = self.generator.get_img_from_w(w = w)
-            scores = self.get_score(txt = txt, img = img)
-            semantic_score, realistic_score = scores[0], scores[1]
+            scores = self.evaluator.calculate_similaritys(img)
+            text_semantic_score, image_semantic_score, text_realistic_score, image_realistic_score = scores[0], scores[1], scores[2], scores[3]
             
             # -1 for maximization
-            semantic_scores.append(-semantic_score)
-            realistic_scores.append(-realistic_score)
+            text_semantic_scores.append(-text_semantic_score)
+            image_semantic_scores.append(-image_semantic_score)
+            text_realistic_scores.append(-text_realistic_score)
+            image_realistic_scores.append(-image_realistic_score)
 
-        return [semantic_scores, realistic_scores]
+        return text_semantic_scores, image_semantic_scores, text_realistic_scores, image_realistic_scores
         
     def get_fes(self):
-        images = []
-        xs, fs = Optimizer.solve_multitask(self, self.txts, self.config)
-        for x in xs:
-            w = torch.from_numpy(x).to(self.device)
-            images.append(self.generator.get_img_from_w(w = w))
-        return images, xs, fs
+        x, f = Optimizer.solve(self, self.config)
+        w = torch.from_numpy(x).to(self.device)
+        image = self.generator.get_img_from_w(w = w)
+        return image, x, f

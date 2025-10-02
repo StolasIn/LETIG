@@ -1,8 +1,9 @@
 import numpy as np
 import torch
 import json
-from FeatureExtractor.CLIP import CLIP
-from FeatureExtractor.VGG import VGG
+from FeatureExtractors import ClipOpenExtractor
+from FeatureExtractors import VGG
+from FeatureExtractors import ExtractorModels
 
 class Datasets:
     
@@ -45,23 +46,15 @@ class Datasets:
         
         self.dataset_index = dict()
         self.dataset_batch = dict()
-        self.clip_image_features = None
-        self.vgg_image_features = None
+        self.features = None
     
     def setup(self, txts, txt_fts):
-        self.clip_image_features, self.vgg_image_features = self.load_dataset()
+        self.features = self.load_dataset()
         self.build_dataset(txts, txt_fts)
     
     def load_dataset(self):
-        with open(self.dataset_path, newline='') as jsonfile:
-            data = json.load(jsonfile)
-            clip_image_features = data['clip_image_features']
-            vgg_image_features = data['vgg_image_features']
-            clip_image_features = np.array(clip_image_features).astype(float)
-            vgg_image_features = np.array(vgg_image_features).astype(float)
-            clip_image_features = torch.from_numpy(clip_image_features).to(self.device)
-            vgg_image_features = torch.from_numpy(vgg_image_features).to(self.device)
-        return clip_image_features, vgg_image_features
+        features = torch.load(self.dataset_path)
+        return features
     
     def get_total_len(self):
         cnt = 0
@@ -232,15 +225,12 @@ class Distance:
         self.device = device
         self.vgg_weight = 0
         
-        self.clip = CLIP()
-        if self.vgg_weight > 0:
-            self.vgg = VGG()
-        
-        self.Dataset = Datasets(dataset_path, clip_score_threshold, dataset_k, default_batch_size, mode, score_type, device)
+        self.clip = ClipOpenExtractor()
+        # self.Dataset = Datasets(dataset_path, clip_score_threshold, dataset_k, default_batch_size, mode, score_type, device)
         self.txt_fts = dict()
         
     def setup(self, txts):
-        self.clip.setup("Default", self.device)
+        self.clip.setup(ExtractorModels.PE_Core_bigG_14_448, self.device)
         
         if self.vgg_weight > 0:
             self.vgg.setup("Default", self.device)
@@ -249,7 +239,7 @@ class Distance:
         for txt in txts:
             self.txt_fts[txt] = self.clip.embedding_text(txt)
             
-        self.Dataset.setup(txts, list(self.txt_fts.values()))
+        # self.Dataset.setup(txts, list(self.txt_fts.values()))
         
     def get_dataset_len(self):
         return self.Dataset.get_total_len()
@@ -267,9 +257,9 @@ class Distance:
             vgg_img_fts = None
         
         semantic_similarity = self.semantic_similarity(clip_txt_fts, clip_img_fts)
-        image_similarity = self.image_similarity(txt, clip_img_fts, vgg_img_fts)
+        # image_similarity = self.image_similarity(txt, clip_img_fts, vgg_img_fts)
         
-        return semantic_similarity, image_similarity
+        return semantic_similarity, 0.0 #, image_similarity
     
     def image_similarity(self, txt, clip_img_fts, vgg_img_fts):
         return self.Dataset.dataset_similarity(txt, clip_img_fts, vgg_img_fts)
