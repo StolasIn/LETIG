@@ -1,11 +1,8 @@
-import numpy as np
 from os import walk
 from PIL import Image
 from tqdm import tqdm
 import torch
 import json
-import configparser
-from enum import Enum
 from FeatureExtractors import *
 
 class Attrs:
@@ -47,6 +44,7 @@ class Extractors:
            ExtractorModels.ViT_H_14_CLIPA_336: ClipOpenExtractor,
            ExtractorModels.convnext_large_d_320: ClipOpenExtractor,
            ExtractorModels.coca_ViT_L_14: ClipOpenExtractor,
+           ExtractorModels.ViT_SO400M_16_SigLIP2_384: ClipOpenExtractor,
            ExtractorModels.Inception: Inception,
            ExtractorModels.MaxViT: MaxViT,
            ExtractorModels.RegNet: RegNet,
@@ -110,21 +108,23 @@ def generate_image_features(model: ExtractorModels, folder_path, batch_size = 5,
     # torch.save(results, f"Features/{M.models[model]}.pt")
 
 if __name__ == '__main__':
-    # model = ExtractorModels.PE_Core_bigG_14_448
+    # model = ExtractorModels.VGG
     # E = Extractors()
     # M = E.get_model_constructor(model)()
     # # M.setup(model, 'cpu')
 
     # results = None
-    # for i in tqdm(range(0, 1000)):
+    # for i in tqdm(range(0, 2800)):
     #     image_features = torch.load(f"Features/{M.models[model]}/{i}.pt")
     #     if results is None: results = image_features
     #     else: results = torch.cat((results, image_features), dim = 0)
 
     # torch.save(results, f"Features/{M.models[model]}.pt")
 
-    # generate_image_features(ExtractorModels.PE_Core_bigG_14_448, "../ImageDatasets/FFHQ/images", batch_size = 5, startpoint = 1182)
-    generate_image_features(ExtractorModels.ViT_H_14_378_quickgelu, "../ImageDatasets/FFHQ/images", batch_size = 5, startpoint = 98)
+    generate_image_features(ExtractorModels.PE_Core_bigG_14_448, "../ImageDatasets/FFHQ/images", batch_size = 5, startpoint = 6752)
+    # generate_image_features(ExtractorModels.VGG, "../ImageDatasets/FFHQ/images", batch_size = 25, startpoint = 0)
+    # generate_image_features(ExtractorModels.ResNet, "../ImageDatasets/FFHQ/images", batch_size = 25, startpoint = 606)
+    # generate_image_features(ExtractorModels.ViT_gopt_16_SigLIP2_384, "../ImageDatasets/FFHQ/images", batch_size = 5, startpoint = 0)
 
     # device = 'cuda:0'
     # dataset_name = 'FFHQ'

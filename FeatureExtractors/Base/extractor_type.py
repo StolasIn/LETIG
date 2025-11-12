@@ -10,14 +10,15 @@ class ExtractorModels(Enum):
     ViT_H_14_CLIPA_336 = 5
     convnext_large_d_320 = 6
     coca_ViT_L_14 = 7
+    ViT_SO400M_16_SigLIP2_384 = 8
 
     # image
-    Inception = 8
-    MaxViT = 9
-    RegNet = 10
-    ResNet = 11
-    ResNeXt = 12
-    Swin = 13
-    VGG = 14
-    ViT = 15
-    WideResNet = 16
+    Inception = 9
+    MaxViT = 10
+    RegNet = 11
+    ResNet = 12
+    ResNeXt = 13
+    Swin = 14
+    VGG = 15
+    ViT = 16
+    WideResNet = 17

@@ -39,9 +39,9 @@ if __name__ == '__main__':
             model_name = ExtractorModels.ViT_H_14_378_quickgelu, 
             text_weight = 1.0, 
             image_weight = 0.5, 
-            text_dataset_weight = 0.0, 
-            image_dataset_weight = 0.0, 
-            dataset_path = None
+            text_dataset_weight = 0.5, 
+            image_dataset_weight = 0.5, 
+            dataset_path = "Features/ViT-H-14-378-quickgelu.pt"
         )
     ]
     
@@ -60,7 +60,9 @@ if __name__ == '__main__':
     model.setup_evaluator(
         evaluator_info = evaluators,
         prompt_text = args.text,
-        prompt_image = None
+        prompt_image = None,
+        n_dataset_samples = config['OPTIM'].getint('n_dataset_samples'),
+        dataset_threshold = config['OPTIM'].getfloat('dataset_threshold')
     )
 
     model.setup_optimizer(

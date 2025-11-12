@@ -14,8 +14,9 @@ class ClipOpenExtractor(BaseExtractor):
             ExtractorModels.ViT_gopt_16_SigLIP2_384 : "webli",                    # 0.6921, 877.96, 723.48
             ExtractorModels.EVA02_L_14_336 : "merged2b_s6b_b61k",                 # 0.6583, 428.08, 395.16
             ExtractorModels.ViT_H_14_CLIPA_336 : "datacomp1b",                    # 0.6439, 968.64, 800.88
-            ExtractorModels.convnext_large_d_320 : "laion2b_s29b_b131k_ft",       # 0.6387, 351.77, 157.98
+            ExtractorModels.convnext_large_d_320 : "laion2b_s29b_b131k_ft_soup",  # 0.6387, 351.77, 157.98
             ExtractorModels.coca_ViT_L_14 : "mscoco_finetuned_laion2b_s13b_b90k", # 0.6327, 638.45, 214.52
+            ExtractorModels.ViT_SO400M_16_SigLIP2_384 : "webli",                  
         }
 
         self.models = {                                             
@@ -26,6 +27,7 @@ class ClipOpenExtractor(BaseExtractor):
             ExtractorModels.ViT_H_14_CLIPA_336 : "ViT-H-14-CLIPA-336",
             ExtractorModels.convnext_large_d_320 : "convnext_large_d_320",
             ExtractorModels.coca_ViT_L_14 : "coca_ViT-L-14",
+            ExtractorModels.ViT_SO400M_16_SigLIP2_384 : "ViT-SO400M-16-SigLIP2-384",
         }
     
     def available_models(self):

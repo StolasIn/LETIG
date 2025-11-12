@@ -45,7 +45,15 @@ class EvaluationModel:
            ExtractorModels.WideResNet: WideResNet,
         }
     
-    def setup(self, prompt_text, prompt_image, evaluator_info, device):
+    def setup(
+        self, 
+        prompt_text, 
+        prompt_image, 
+        evaluator_info, 
+        n_dataset_samples, 
+        dataset_threshold,
+        device
+    ):
         self.prompt_text = prompt_text
         self.prompt_image = prompt_image
         self.prompt_text_features = dict()
@@ -58,9 +66,9 @@ class EvaluationModel:
         self.image_similarity_datasets = dict()
         for i in range(len(self.evaluator_info)):
             self.extractor.append(self.models[self.evaluator_info[i].model_name]())
-        self.prebuild_prompt_features()
-    
-    def prebuild_prompt_features(self):
+        self.prebuild_prompt_features(n_dataset_samples, dataset_threshold)
+
+    def prebuild_prompt_features(self, n_dataset_samples, dataset_threshold):
         for i, extractor in enumerate(self.extractor):
             extractor.setup(self.evaluator_info[i].model_name, self.device)
 
@@ -80,28 +88,24 @@ class EvaluationModel:
 
                 if features is not None and self.evaluator_info[i].text_dataset_weight > 0:
                     similaritys = extractor.batch_feature_similarity(self.prompt_text_features[extractor.models[extractor.model_name]], features)
-                    self.text_similarity_datasets[extractor.models[extractor.model_name]] = self.build_dataset(features, similaritys)
+                    self.text_similarity_datasets[extractor.models[extractor.model_name]] = self.build_dataset(features, similaritys, n_dataset_samples, dataset_threshold)
 
             if canEmbedImage(extractor) and self.prompt_image is not None:
                 self.prompt_image_features[extractor.models[extractor.model_name]] = extractor.embedding_image(self.prompt_image)
 
                 if features is not None and self.evaluator_info[i].image_dataset_weight > 0:
                     similaritys = extractor.batch_feature_similarity(self.prompt_image_features[extractor.models[extractor.model_name]], features)
-                    self.image_similarity_datasets[extractor.models[extractor.model_name]] = self.build_dataset(features, similaritys)
-
+                    self.image_similarity_datasets[extractor.models[extractor.model_name]] = self.build_dataset(features, similaritys, n_dataset_samples, dataset_threshold)
+            
             del extractor
 
-    def build_dataset(self, features, similaritys):
+    def build_dataset(self, features, similaritys, n_dataset_samples, dataset_threshold):
         if features is None:
             return None
-
-        index = np.argsort(-similaritys)[:20]
+        features = features[similaritys >= dataset_threshold]
+        similaritys = similaritys[similaritys >= dataset_threshold]
+        index = np.argsort(-similaritys)[:n_dataset_samples]
         return features[index]
-
-    def similaritys_statistics(self, similaritys):
-        weights = np.exp(similaritys) / np.sum(np.exp(similaritys))
-        result = np.mean(np.dot(weights, similaritys))
-        return result
 
     def get_text_similaritys(self, extractor: BaseExtractor, weight, text_feature, generated_image_features):
         if weight <= 0 or not canEmbedText(extractor) or self.prompt_text is None or text_feature is None:
@@ -116,11 +120,14 @@ class EvaluationModel:
         return extractor.batch_feature_similarity(self.prompt_image_features[extractor.models[extractor.model_name]], generated_image_features)
 
     def get_dataset_similaritys(self, extractor: BaseExtractor, weight, image_features, generated_image_features):
-        if weight <= 0 or canEmbedImage(extractor) or image_features is None:
+        if weight <= 0 or image_features is None:
             return np.zeros((len(generated_image_features)))
-
-        similaritys = extractor.batch_feature_similarity(image_features, generated_image_features)
-        similaritys = np.mean(similaritys, axis = 1)
+        
+        similaritys = np.zeros((len(generated_image_features)))
+        for i in range(len(generated_image_features)):
+            similarity = extractor.batch_feature_similarity(image_features, generated_image_features)
+            similarity = np.mean(similarity, axis = 0)
+            similaritys[i] = similarity
         return similaritys
 
     def calculate_similaritys(self, generated_images, batch_size = 8):
@@ -163,6 +170,7 @@ class EvaluationModel:
             results[:, 2] += self.evaluator_info[i].text_dataset_weight * text_dataset_similarity
             results[:, 3] += self.evaluator_info[i].image_dataset_weight * image_dataset_similarity
 
+            print(results)
             del extractor
 
         results /= len(self.extractor)

@@ -67,13 +67,15 @@ class Optimizer:
         self, 
         evaluator_info,
         prompt_text: str = None,
-        prompt_image: Image.Image = None
+        prompt_image: Image.Image = None,
+        n_dataset_samples = 20,
+        dataset_threshold = 0.25
     ):
         if prompt_text is None and prompt_image is None:
             raise ValueError("Either prompt_text or prompt_image must be provided.")
-        
-        self.evaluator.setup(prompt_text, prompt_image, evaluator_info, self.device)
-    
+
+        self.evaluator.setup(prompt_text, prompt_image, evaluator_info, n_dataset_samples, dataset_threshold, self.device)
+
     def setup_optimizer(
         self, 
         algorithm_name,
